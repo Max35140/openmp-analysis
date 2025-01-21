@@ -5,7 +5,7 @@ import subprocess
 import shutil
 import argparse
 import numpy as np
-
+import requests
 from tqdm import tqdm
 
 skip = False
@@ -30,9 +30,9 @@ class RepoUnavailable(Exception):
         return self.errorCode
 
 # REPO_PATH = "/home/tim/repo_finder/openmp-usage-analysis-binaries/REPOS/"
-BASE_PATH= "/home/ci24amun/projects/openmp-usage-analysis/openmp-usage-analysis-binaries"
-REPO_PATH   = BASE_PATH+"/data/"
-SCRIPT_PATH = BASE_PATH+"/scripts/CI"
+BASE_PATH= r"C:\Users\block\PycharmProjects\openmp-analysis\DownloadAndBuilder"
+REPO_PATH   = BASE_PATH+"\\data\\"
+SCRIPT_PATH = BASE_PATH+"\scripts\CI"
 def cloneRepo(repoUrl, path, commit_hash=None):
     try:
         # remove any old repo
@@ -40,13 +40,10 @@ def cloneRepo(repoUrl, path, commit_hash=None):
             # not already present:
             # download
             # check if URL is still available
-            
-            server_status =subprocess.check_output("curl -S  --head --request GET "+repoUrl.rstrip(".git")+" 2>/dev/null | head -n1 | awk '{print $2}'",shell=True,
-                                    encoding='UTF-8')
-            #   print("Executed: "+"curl -S  --head --request GET "+repoUrl.rstrip(".git")+" 2>/dev/null | head -n1 | awk '{print $2}'")
-#            if server_status.startswith("4") or server_status == "301":
-            if int(server_status) != 200:
-                print("return code was ",int(server_status))
+            server_status = requests.head(repoUrl.rstrip(".git"))
+
+            if int(server_status.status_code) != 200:
+                print("return code was ", int(server_status.status_code))
                 raise RepoUnavailable(server_status)
             subprocess.check_output(f'git clone --depth 1 {repoUrl} {path}', stderr=subprocess.STDOUT, shell=True,
                                     encoding='UTF-8')
@@ -63,11 +60,11 @@ def cloneRepo(repoUrl, path, commit_hash=None):
             subprocess.check_output(f'git checkout {commit_hash}', cwd=path, stderr=subprocess.STDOUT,
                                     shell=True, encoding='UTF-8')
             return commit_hash
-
     except subprocess.CalledProcessError as e:
         print("ERROR: downloading Repo (",repoUrl,") to (",path,"):")
         print(e.output)
-
+        print(f"Fehlercode: {e.returncode}")
+        print(f"Fehlermeldung: {e.stderr}")
 
 def apply_dowload_repo(row):
     h = None
@@ -149,12 +146,12 @@ def main():
         #    return "Fail"
         if not args.doNotPromoteTableColumns:
             print("Expanding table")
-            df_full.insert(len(df_full.columns),"build_script",np.NaN)
+            df_full.insert(len(df_full.columns),"build_script",np.nan)
             df_full.insert(len(df_full.columns),"expert","ci")
-            df_full.insert(len(df_full.columns),"use_cmake",np.NaN)
-            df_full.insert(len(df_full.columns),"use_configure",np.NaN)
-            df_full.insert(len(df_full.columns),"usedHash",np.NaN)
-            df_full.insert(len(df_full.columns),"note",np.NaN)
+            df_full.insert(len(df_full.columns),"use_cmake",np.nan)
+            df_full.insert(len(df_full.columns),"use_configure",np.nan)
+            df_full.insert(len(df_full.columns),"usedHash",np.nan)
+            df_full.insert(len(df_full.columns),"note",np.nan)
             print(" .. done")
     # if preserve is set, secure previous intermediate Results            
     if args.preserve and os.path.isfile(args.intermediateResultsFile):
@@ -316,7 +313,7 @@ def one_repo_at_a_time(row):
         print("\t* Makefile not available")
     if "CMakeLists.txt" in os.listdir(path):
         #print("cmake in ",path)
-        if try_build_script(path, BASE_PATH="/scripts/default_cmake.sh"):
+        if try_build_script(path, BASE_PATH+"/scripts/default_cmake.sh"):
             row['build_script'] = "default_cmake.sh"
             row['use_configure'] = False
             row['note']="Autobuild Success"
@@ -329,7 +326,7 @@ def one_repo_at_a_time(row):
         print("\t* Cmake not available")
     if "configure" in os.listdir(path):
         #print("Configure in ",path)
-        if try_build_script(path, BASE_PATH="/scripts/default_configure.sh"):
+        if try_build_script(path, BASE_PATH+"/scripts/default_configure.sh"):
             row['build_script'] = "default_configure.sh"
             row['use_configure'] = False
             row['note']="Autobuild Success"
