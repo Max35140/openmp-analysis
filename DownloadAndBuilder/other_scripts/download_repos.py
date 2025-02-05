@@ -30,9 +30,9 @@ class RepoUnavailable(Exception):
         return self.errorCode
 
 # REPO_PATH = "/home/tim/repo_finder/openmp-usage-analysis-binaries/REPOS/"
-BASE_PATH= r"C:\Users\block\PycharmProjects\openmp-analysis\DownloadAndBuilder"
-REPO_PATH   = BASE_PATH+"\\data\\"
-SCRIPT_PATH = BASE_PATH+"\scripts\CI"
+BASE_PATH= r"/home/max/Downloads/openmp-analysis/DownloadAndBuilder"
+REPO_PATH   = BASE_PATH+"/data/"
+SCRIPT_PATH = BASE_PATH+"/scripts/CI"
 def cloneRepo(repoUrl, path, commit_hash=None):
     try:
         # remove any old repo
@@ -40,7 +40,7 @@ def cloneRepo(repoUrl, path, commit_hash=None):
             # not already present:
             # download
             # check if URL is still available
-            server_status = requests.head(repoUrl.rstrip(".git"))
+            server_status = requests.head(repoUrl, allow_redirects=True)
 
             if int(server_status.status_code) != 200:
                 print("return code was ", int(server_status.status_code))
@@ -353,6 +353,7 @@ def try_build_script(path, script):
         output = subprocess.check_output("%s %s -O0"%(script,path), cwd=path,
                                          stderr=subprocess.STDOUT,
                                          shell=True, encoding='UTF-8')
+        print((script,path))
         #print(output)
         if "BUILD SUCCESSFUL" in output:
             return True
