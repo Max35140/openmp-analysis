@@ -5,7 +5,7 @@ import os
 
 
 ## invocatipon example: python AnalyzeModule/analyze.py --data_dir /work/scratch/tj75qeje/openmp-usage-analysis-binaries/REPOS/ --results_dir /work/scratch/tj75qeje/openmp-usage-analysis-binaries/RESULTS/ --build_script_dir /work/scratch/tj75qeje/openmp-usage-analysis-binaries/scripts --repo_list /work/scratch/tj75qeje/openmp-usage-analysis-binaries/tj_result.csv
-
+## python AnalyzeModule/analyze.py --data_dir /home/max/Downloads/test/REPOS/ --results_dir /home/max/Downloads/test/RESULTS/ --build_script_dir /home/max/Downloads/openmp-analysis/DownloadAndBuilder/scripts --repo_list /home/max/Downloads/openmp-analysis/DownloadAndBuilder/ci_result.csv
 def main():
     args = Parser.parseInput()
 
@@ -39,11 +39,8 @@ def main():
 
     print("Analyze %d Repos" % len(df_repos))
 
-    usageAnalyzer = AnalysisManager(df_repos, args.data_dir, args.results_dir, ignore_endings, ignore_folders,
-                                    args.refresh, args.keep, args.tripcount_guess, args.print_cfg)
-
+    usageAnalyzer = AnalysisManager(df_repos, args.data_dir, args.results_dir, ignore_endings, ignore_folders, args.refresh, args.keep, args.tripcount_guess, args.print_cfg)
     usageAnalyzer()
-
 
 if __name__ == '__main__':
     main()

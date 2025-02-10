@@ -1,13 +1,15 @@
 import os
+from pickle import FALSE
 
 from tqdm.auto import tqdm
 from datetime import datetime
 
+from AnalyzeModule.AnalysisModule.AsmAnalyzer import AsmAnalyzer
 from AnalyzeModule.AnalysisModule.OpenMPPragmaAnalysis import OpenmpAnalysis
+from AnalyzeModule.AnalysisModule.TaskAnalyzer import TaskAnalyzer
 
 tqdm.pandas()
 import pandas as pd
-from AnalysisModule.AsmAnalyzer import AsmAnalyzer
 import magic
 import subprocess
 import shutil
@@ -17,9 +19,9 @@ from pandarallel import pandarallel
 pandarallel.initialize(nb_workers=24, progress_bar=True)
 
 # for debugging
-CONTINUE_ON_EXCEPTION = True
+CONTINUE_ON_EXCEPTION = False
 
-PRINT_ANALYZED_FILES = False
+PRINT_ANALYZED_FILES = True
 USE_PARALLEL_PROCESSING = True
 
 MARKER_FILE_NAME = "analysis_finished"
@@ -89,6 +91,8 @@ def analyze_asm_repo_single_arg(args):
     else:
         analyze_asm_repo(args)
 
+def analyze_task_repo(row, print_analyzed_repos=True, print_analyzed_files=False):
+    return False
 
 def analyze_asm_repo(row, print_analyzed_repos=True, print_analyzed_files=False):
     repo_name = row["Code"].replace('/', '--')
@@ -105,7 +109,6 @@ def analyze_asm_repo(row, print_analyzed_repos=True, print_analyzed_files=False)
 
     outdir = os.path.join(row["resultdir"], repo_name)
     os.makedirs(outdir, exist_ok=True)
-
     for root, dirs, files in os.walk(repo_path):
         # https://stackoverflow.com/questions/19859840/excluding-directories-in-os-walk
         # modifying dirs in-place will prune the (subsequent) files and directories visited by os.walk
@@ -122,13 +125,12 @@ def analyze_asm_repo(row, print_analyzed_repos=True, print_analyzed_files=False)
             for suffix in row["ignore_endings"]:
                 if this_file.endswith(suffix):
                     analyze = False
-
             if analyze:
-                if PRINT_ANALYZED_FILES:
-                    print("analyze file: %s" % this_file)
-                analyzer = AsmAnalyzer()
-                outname = name + ".csv"
-                analyzer(this_file, os.path.join(outdir, outname), row["tripcount_guess"], row["print_cfg"])
+                print("Analyze file: %s" % name)
+                ##analyzer = AsmAnalyzer()
+                analyzer = TaskAnalyzer()
+                outname = name.rsplit(sep=".",maxsplit=1)[0] + ".csv"
+                analyzer(this_file, os.path.join(outdir, outname), row["tripcount_guess"])
             else:
                 if print_analyzed_files:
                     print("skip file %s" % this_file)
