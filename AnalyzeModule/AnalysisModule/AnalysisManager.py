@@ -22,7 +22,7 @@ pandarallel.initialize(nb_workers=24, progress_bar=True)
 CONTINUE_ON_EXCEPTION = False
 
 PRINT_ANALYZED_FILES = True
-USE_PARALLEL_PROCESSING = True
+USE_PARALLEL_PROCESSING = False
 
 MARKER_FILE_NAME = "analysis_finished"
 
@@ -70,7 +70,7 @@ def build_repo(path, build_script):
         output = subprocess.check_output("%s %s -O0" % (build_script, path), cwd=path,
                                          stderr=subprocess.STDOUT,
                                          shell=True, encoding='UTF-8')
-        print(output)
+        print("Build output: ", output)
         if "BUILD SUCCESSFUL" in output:
             return True
         else:
@@ -104,8 +104,6 @@ def analyze_asm_repo(row, print_analyzed_repos=True, print_analyzed_files=False)
     if print_analyzed_repos:
         print("Build %s" % repo_name)
     build_repo(repo_path, row["build_script"])
-    if print_analyzed_repos:
-        print("Analyze %s" % repo_name)
 
     outdir = os.path.join(row["resultdir"], repo_name)
     os.makedirs(outdir, exist_ok=True)
@@ -118,7 +116,7 @@ def analyze_asm_repo(row, print_analyzed_repos=True, print_analyzed_files=False)
             file_type = magic.from_file(this_file, mime=True)
             # only analyze binary or object files
             analyze = file_type.startswith('application/x-executable') or file_type.startswith(
-                'application/x-object') or file_type.startswith('application/x-sharedlib')
+                'application/x-object') or file_type.startswith('application/x-sharedlib') or file_type.startswith('application/x-pie-executable')
             # print(this_file)
             # print(file_type)
 
