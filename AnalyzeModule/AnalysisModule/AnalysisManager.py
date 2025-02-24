@@ -115,8 +115,7 @@ def analyze_asm_repo(row, print_analyzed_repos=True, print_analyzed_files=False)
             this_file = os.path.join(root, name)
             file_type = magic.from_file(this_file, mime=True)
             # only analyze binary or object files
-            analyze = file_type.startswith('application/x-executable') or file_type.startswith(
-                'application/x-object') or file_type.startswith('application/x-sharedlib') or file_type.startswith('application/x-pie-executable')
+            analyze = file_type.startswith('application/x-executable') or file_type.startswith('application/x-sharedlib') or file_type.startswith('application/x-pie-executable')
             # print(this_file)
             # print(file_type)
 

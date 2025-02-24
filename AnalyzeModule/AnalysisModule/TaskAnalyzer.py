@@ -1,13 +1,17 @@
 import angr
 import pandas as pd
 import re
+import subprocess
 
 class TaskAnalyzer:
     def __init__(self):
         pass
 
     def __call__(self, source, outfile, default_trip_count_guess):
-        analyze_object_file(source, outfile)
+
+        analyze_object_file(source, outfile, tripcount=10)
+
+        #analyze_object_file(source, outfile)
         #proj = angr.Project(source, load_options={'auto_load_libs': False})
         #parallel_regions = proj.analyses.OpenMPRegionAnalysis(default_trip_count_guess).result
         #assert isinstance(parallel_regions, pd.DataFrame)
@@ -66,8 +70,8 @@ class OpenMPRegionAnalysis(angr.Analysis):
 
 angr.analyses.register_analysis(OpenMPRegionAnalysis, 'OpenMPRegionAnalysis')
 
-import subprocess
 import re
+import subprocess
 
 def get_disassembly(object_file_path):
     result = subprocess.run(['objdump', '-d', object_file_path], capture_output=True, text=True, check=True)
@@ -75,14 +79,14 @@ def get_disassembly(object_file_path):
 
 def find_relevant_omp_fn(disassembly):
     gomp_task_pattern = re.compile(r'call\s+[0-9a-f]+\s+<GOMP_task@plt>')
-    omp_fn_pattern = re.compile(r'([0-9a-f]+)\s+<main\._omp_fn\.[0-9]+>')
+    omp_fn_pattern = re.compile(r'([0-9a-f]+)\s+<\w+\._omp_fn\.[0-9]+>')
 
     task_function_addresses = set()
 
     for i, line in enumerate(disassembly.splitlines()):
         if gomp_task_pattern.search(line):
             # Look for call instructions around the GOMP_task call
-            for j in range(max(0, i-10), min(len(disassembly.splitlines()), i+10)):
+            for j in range(max(0, i - 10), min(len(disassembly.splitlines()), i + 10)):
                 match = omp_fn_pattern.search(disassembly.splitlines()[j])
                 if match:
                     task_function_addresses.add(match.group(1))
@@ -90,54 +94,106 @@ def find_relevant_omp_fn(disassembly):
 
     return task_function_addresses
 
-def count_instructions(disassembly, function_start_addresses):
-    instruction_count = 0
-    processed_functions = set()
+def count_instructions(disassembly, start_addresses, tripcount):
+    instruction_count = {}
 
-    def count_in_function(start_address):
-        nonlocal instruction_count
+    def count_in_function(start_address, processed_functions):
         if start_address in processed_functions:
-            return
+            return 0
         processed_functions.add(start_address)
 
+        count = 0
         in_function = False
         function_pattern = re.compile(r'^\s*' + re.escape(start_address) + r':\s+[0-9a-f]+\s+.*$')
         call_pattern = re.compile(r'\s*[0-9a-f]+:\s+([0-9a-f]+\s+)*call\s+([0-9a-f]+)\s+<.*>')
+        jump_patterns = re.compile(r'^\s*[0-9a-f]+:\s+([0-9a-f]+\s+)*(jmp|je|jg|jl|jne|jge|jle|jz|jnz)\s+([0-9a-f]+)')
+        cmp_patterns = re.compile(r'^\s*[0-9a-f]+:\s+([0-9a-f]+\s+)*(cmp|cmpq|cmpb|cmpw|cmpl|test|testq|testb|testw)\s+')
 
         print(f"Checking function start: {start_address}")
 
-        for line in disassembly.splitlines():
+        lines = disassembly.splitlines()
+        for i, line in enumerate(lines):
             if function_pattern.match(line):
                 print(f"Entering function: {start_address}")
                 in_function = True
                 continue
             if in_function:
                 if re.match(r'\s*[0-9a-f]+:\s+[0-9a-f]+', line):
-                    instruction_count += 1
+                    count += 1
                     print(f"Counting instruction: {line.strip()}")
                 call_match = call_pattern.search(line)
                 if call_match:
                     called_address = call_match.group(2)
                     print(f"Function {start_address} calls {called_address}")
-                    count_in_function(called_address)
+                    count += count_in_function(called_address, processed_functions)
+
+                jump_match = jump_patterns.search(line)
+                if jump_match:
+                    jump_target = jump_match.group(3)
+                    current_address = line.split(':')[0].strip()
+
+                    if int(jump_target, 16) < int(current_address, 16):  # Rückwärtssprung erkennen
+                        for j in range(len(lines)):
+                            target_line = lines[j]
+                            parts = target_line.split()
+                            if parts and jump_target == parts[0].rstrip(':') and cmp_patterns.search(target_line):
+                                loop_start = jump_target
+                                loop_end = current_address
+
+                                # Anzahl der Instruktionen innerhalb der Schleife zählen
+                                loop_instruction_count = 0
+                                in_loop = False
+                                for k in range(len(lines)):
+                                    loop_line = lines[k]
+                                    if loop_line.split(':')[0].strip() == loop_start:
+                                        in_loop = True
+                                    if in_loop:
+                                        if re.match(r'\s*[0-9a-f]+:\s+[0-9a-f]+', loop_line):
+                                            loop_instruction_count += 1
+                                            print(f"Counting loop instruction: {loop_line.strip()}")
+                                        if loop_line.split(':')[0].strip() == loop_end:
+                                            break
+
+                                # Rekursiv Instruktionen in aufgerufenen Funktionen innerhalb der Schleife zählen
+                                processed_in_loop = set()
+                                for k in range(len(lines)):
+                                    loop_line = lines[k]
+                                    if loop_line.split(':')[0].strip() == loop_start:
+                                        in_loop = True
+                                    if in_loop:
+                                        call_match = call_pattern.search(loop_line)
+                                        if call_match:
+                                            called_address = call_match.group(2)
+                                            loop_instruction_count += count_in_function(called_address, processed_in_loop)
+                                        if loop_line.split(':')[0].strip() == loop_end:
+                                            break
+
+                                count += loop_instruction_count * tripcount
+
                 if re.match(r'^\s*[0-9a-f]+ <.*>:', line):
                     in_function = False
                     print(f"Exiting function: {start_address}")
                     break
 
-    for start_address in function_start_addresses:
-        count_in_function(start_address)
+        return count
+
+    for address in start_addresses:
+        processed_functions = set()
+        print(f"Analyzing task function at address: {address}")
+        instruction_count[address] = count_in_function(address, processed_functions)
 
     return instruction_count
 
-def analyze_object_file(object_file_path, result_file_path):
+def analyze_object_file(object_file_path, result_file_path, tripcount):
     try:
         disassembly = get_disassembly(object_file_path)
         relevant_omp_fn_addresses = find_relevant_omp_fn(disassembly)
-        task_instruction_count = count_instructions(disassembly, relevant_omp_fn_addresses)
+
+        results = count_instructions(disassembly, relevant_omp_fn_addresses, tripcount)
 
         with open(result_file_path, 'w') as result_file:
-            result_file.write(f'Task Instruction Count: {task_instruction_count}\n')
+            for addr, count in results.items():
+                result_file.write(f'Task Function at {addr}: {count} instructions\n')
 
         print(f'Analysis complete. Result saved to {result_file_path}')
     except subprocess.CalledProcessError as e:
