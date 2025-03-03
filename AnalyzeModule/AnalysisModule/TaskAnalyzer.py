@@ -9,7 +9,7 @@ class TaskAnalyzer:
 
     def __call__(self, source, outfile, default_trip_count_guess):
 
-        analyze_object_file(source, outfile, tripcount=10)
+        analyze_object_file(source, outfile, tripcount=1)
 
         #analyze_object_file(source, outfile)
         #proj = angr.Project(source, load_options={'auto_load_libs': False})
@@ -97,10 +97,9 @@ def find_relevant_omp_fn(disassembly):
 def count_instructions(disassembly, start_addresses, tripcount):
     instruction_count = {}
 
-    def count_in_function(start_address, processed_functions):
-        if start_address in processed_functions:
+    def count_in_function(start_address, current_depth, max_depth):
+        if current_depth > max_depth:
             return 0
-        processed_functions.add(start_address)
 
         count = 0
         in_function = False
@@ -125,7 +124,7 @@ def count_instructions(disassembly, start_addresses, tripcount):
                 if call_match:
                     called_address = call_match.group(2)
                     print(f"Function {start_address} calls {called_address}")
-                    count += count_in_function(called_address, processed_functions)
+                    count += count_in_function(called_address, current_depth + 1, max_depth)  # Zähle jede Aufrufinstanz
 
                 jump_match = jump_patterns.search(line)
                 if jump_match:
@@ -133,42 +132,38 @@ def count_instructions(disassembly, start_addresses, tripcount):
                     current_address = line.split(':')[0].strip()
 
                     if int(jump_target, 16) < int(current_address, 16):  # Rückwärtssprung erkennen
-                        for j in range(len(lines)):
-                            target_line = lines[j]
-                            parts = target_line.split()
-                            if parts and jump_target == parts[0].rstrip(':') and cmp_patterns.search(target_line):
-                                loop_start = jump_target
-                                loop_end = current_address
+                        loop_start = jump_target
+                        loop_end = current_address
 
-                                # Anzahl der Instruktionen innerhalb der Schleife zählen
-                                loop_instruction_count = 0
-                                in_loop = False
-                                for k in range(len(lines)):
-                                    loop_line = lines[k]
-                                    if loop_line.split(':')[0].strip() == loop_start:
-                                        in_loop = True
-                                    if in_loop:
-                                        if re.match(r'\s*[0-9a-f]+:\s+[0-9a-f]+', loop_line):
-                                            loop_instruction_count += 1
-                                            print(f"Counting loop instruction: {loop_line.strip()}")
-                                        if loop_line.split(':')[0].strip() == loop_end:
-                                            break
+                        # Anzahl der Instruktionen innerhalb der Schleife zählen
+                        loop_instruction_count = 0
+                        in_loop = False
+                        for k in range(i, len(lines)):
+                            loop_line = lines[k]
+                            if loop_line.split(':')[0].strip() == loop_start:
+                                in_loop = True
+                            if in_loop:
+                                if re.match(r'\s*[0-9a-f]+:\s+[0-9a-f]+', loop_line):
+                                    loop_instruction_count += 1
+                                    print(f"Counting loop instruction: {loop_line.strip()}")
+                                if loop_line.split(':')[0].strip() == loop_end:
+                                    break
 
-                                # Rekursiv Instruktionen in aufgerufenen Funktionen innerhalb der Schleife zählen
-                                processed_in_loop = set()
-                                for k in range(len(lines)):
-                                    loop_line = lines[k]
-                                    if loop_line.split(':')[0].strip() == loop_start:
-                                        in_loop = True
-                                    if in_loop:
-                                        call_match = call_pattern.search(loop_line)
-                                        if call_match:
-                                            called_address = call_match.group(2)
-                                            loop_instruction_count += count_in_function(called_address, processed_in_loop)
-                                        if loop_line.split(':')[0].strip() == loop_end:
-                                            break
+                        # Rekursiv Instruktionen in aufgerufenen Funktionen innerhalb der Schleife zählen
+                        processed_in_loop = set()
+                        for k in range(i, len(lines)):
+                            loop_line = lines[k]
+                            if loop_line.split(':')[0].strip() == loop_start:
+                                in_loop = True
+                            if in_loop:
+                                call_match = call_pattern.search(loop_line)
+                                if call_match:
+                                    called_address = call_match.group(2)
+                                    loop_instruction_count += count_in_function(called_address, current_depth + 1, max_depth)  # Zähle jede Aufrufinstanz
+                                if loop_line.split(':')[0].strip() == loop_end:
+                                    break
 
-                                count += loop_instruction_count * tripcount
+                        count += loop_instruction_count * tripcount
 
                 if re.match(r'^\s*[0-9a-f]+ <.*>:', line):
                     in_function = False
@@ -177,10 +172,11 @@ def count_instructions(disassembly, start_addresses, tripcount):
 
         return count
 
+    max_depth = tripcount  # Setze die maximale Rekursionstiefe auf den tripcount
+
     for address in start_addresses:
-        processed_functions = set()
         print(f"Analyzing task function at address: {address}")
-        instruction_count[address] = count_in_function(address, processed_functions)
+        instruction_count[address] = count_in_function(address, 0, max_depth)
 
     return instruction_count
 
@@ -200,3 +196,4 @@ def analyze_object_file(object_file_path, result_file_path, tripcount):
         print(f'Error disassembling object file: {e}')
     except Exception as e:
         print(f'Error analyzing object file: {e}')
+
