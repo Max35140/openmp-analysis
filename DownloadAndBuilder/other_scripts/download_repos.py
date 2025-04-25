@@ -117,6 +117,7 @@ def main():
     parser.add_argument("--nextActionItem","-n",help="Stop and Print Next Action Item",action='store_true')
     parser.add_argument("--verbose","-v",help="Verbose",action='store_true')
     parser.add_argument("--buildScriptPath",help="Location of build-scripts")
+    parser.add_argument("--stopAtFail",help="Stop at the first fail",action='store_true')
     # parser.add_argument('--feature', default=True, action=argparse.BooleanOptionalAction)
 
     # parser.add_argument('--feature', dest='feature', action='store_true')
@@ -228,11 +229,21 @@ def intercept_exceptions(row):
 def skip_repos(row):
     return row
 
+
+def find_all(path,name):
+    result = []
+    for root, dirs, files in os.walk(path):
+        if name in files:
+#            print("Root=%s Dirs=%s File=%s"%(root,dirs,name))
+            result.append(os.path.join(root, name))
+    return result
+
 def one_repo_at_a_time(row):
     global expertInitials
     row['expert'] = expertInitials 
     path = REPO_PATH + row["Code"].replace('/', '--')
     print("### Processing ",row["Code"].replace('/', '--')," ###")
+    code_name=row["Code"].replace('/', '--')
     if pd.isna(row['usedHash']):
         print ("Missing hash, testing scripts")
 
@@ -300,7 +311,7 @@ def one_repo_at_a_time(row):
             row['build_script']="userscript_fail_after_fixing_githash.sh"
         shutil.rmtree(path)
         return row
-    print("\t* checking for existing script file")
+    print("\t* Checking for csv defined script file")
     script_file=SCRIPT_PATH+"/"+row["Code"].replace('/', '--')+".sh"
     if os.path.isfile(script_file):
         if try_build_script(path,script_file):
@@ -310,18 +321,42 @@ def one_repo_at_a_time(row):
             row['build_script']="userscript_fail_after_fixing_githash.sh"
         shutil.rmtree(path)
         return row
+    
+    print("\t* Checking for existing \"fail\"-script file")
     script_file=SCRIPT_PATH+"/"+row["Code"].replace('/', '--')+".fail.sh"
     if os.path.isfile(script_file):
+        print("\t * %s marked as unbuildable"%code_name)
         row['build_script']=script_file
         shutil.rmtree(path)
         return row
+
+    print("\t* checking for possible script match \"%s\""%(code_name+".sh"))
+    possible_scripts=find_all(SCRIPT_PATH,code_name+".sh")
+    print("\t\t found %s scripts"%(len(possible_scripts)))
+    for possible_script in possible_scripts:
+        if len(possible_scripts) and  os.path.isfile(possible_scripts[0]):
+            relativePath=possible_scripts[0].removeprefix(SCRIPT_PATH)
+            print("\t\t testing %s",relativePath)
+            if try_build_script(path,possible_script):
+                print("build with %s works",possible_script)
+                row['build_script']=script_file
+                shutil.rmtree(path)
+                return row
+            else:
+                print("\t\t %s did not work..."%(possible_script))    
+
+    
     print("\t* Testing Makefile")
  #   print("Downloaded repo with hash",row['usedHash'])
 #    print ("##### Attempting compile for ",row["Code"].replace('/', '--'),"###########")
+#    print("Searching for makefiles in %s"%path) 
+#    possible_makefiles=find_all(path,"makefile")+find_all(path,"Makefile")
+#    print("\t\t found %s makefiles"%(len(possible_makefiles)))
+#    for makefile in possible_makefiles:
     if "Makefile" in os.listdir(path) or "makefile" in os.listdir(path):
         print("\t\tMakfile in ",path)
-        print("\t\tMakefile execution templated:",BASE_PATH,"/scripts/default_make.sh")
-        if try_build_script(path, BASE_PATH + "/scripts/default_make.sh"):
+        print("\t\tMakefile execution templated:",SCRIPT_PATH+"/default_make.sh")
+        if try_build_script(path, SCRIPT_PATH + "/default_make.sh"):
             row['build_script'] = "default_make.sh"
             row['use_configure'] = False
             row['note']="Autobuild Success"
@@ -335,8 +370,8 @@ def one_repo_at_a_time(row):
         print("\t* Makefile not available")
     print("\t* Testing CMake")
     if "CMakeLists.txt" in os.listdir(path):
-        #print("cmake in ",path)
-        if try_build_script(path, BASE_PATH+"/scripts/default_cmake.sh"):
+        print("cmake in ",path)
+        if try_build_script(path, SCRIPT_PATH+"/default_cmake.sh"):
             row['build_script'] = "default_cmake.sh"
             row['use_configure'] = False
             row['note']="Autobuild Success"
@@ -349,7 +384,7 @@ def one_repo_at_a_time(row):
         print("\t* Cmake not available")
     if "configure" in os.listdir(path):
         #print("Configure in ",path)
-        if try_build_script(path, BASE_PATH+"/scripts/default_configure.sh"):
+        if try_build_script(path, SCRIPT_PATH+"/default_configure.sh"):
             row['build_script'] = "default_configure.sh"
             row['use_configure'] = False
             row['note']="Autobuild Success"
@@ -371,21 +406,23 @@ def one_repo_at_a_time(row):
 
 
 def try_build_script(path, script):
-    print("Checking file ",os.path.isfile(script))
     assert os.path.isfile(script)
-    print("Done")
     try:
+        print("\t\t calling \"%s %s -O0"%(script,path))
+        print("- Build start ------------------------------------------------------------------------")
         output = subprocess.check_output("%s %s -O0"%(script,path), cwd=path,
                                          stderr=subprocess.STDOUT,
                                          shell=True, encoding='UTF-8')
+        print("- Build end   -----------------------------------------------------------------------")
         print((script,path))
-        #print(output)
+        print(output)
         if "BUILD SUCCESSFUL" in output:
             return True
         else:
             return False
 
     except subprocess.CalledProcessError as e:
+        print("- Build failed -----------------------------------------------------------------------")
         print("ERROR: building Repo:")
         print(e.output)
     return False
