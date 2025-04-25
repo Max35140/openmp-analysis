@@ -1,6 +1,7 @@
 #!/shared/apps/.gcc/11.2/python/3.9.5/bin/python3.9
 import pandas as pd
 import os
+import sys
 import subprocess
 import shutil
 import argparse
@@ -70,7 +71,7 @@ def apply_dowload_repo(row):
     h = None
     if pd.notna(row['usedHash']):
         h = row['usedHash']
-    return cloneRepo(row["URL"], REPO_PATH + row["Code"].replace('/', '--'), h)
+    return cloneRepo(row["URL"], REPO_PATH+"/" + row["Code"].replace('/', '--'), h)
 
 def archive_prev_file(filename):
     if os.path.isfile(filename+".back"):
@@ -101,6 +102,7 @@ def main():
     )
     parser.add_argument("csvSource", type=str, default="ci.csv",help="CSV Repo to process")
     parser.add_argument("--basePath",type=str,default=".",help="Set the Base path of the binary repository, default assumes current directory")
+    parser.add_argument("--binaryPath",type=str,default=".",help="Set the Base path of the binary repository, default assumes current directory")
     parser.add_argument("--repoPath",type=str,default="/tmp",help="Set the path where the repositories will be checked out, default is /tmp/ recommend setting a local scatch directory")
     parser.add_argument("--csvOutput", type=str, default="result.csv", help="The output file to write to (default: result.csv)")
     parser.add_argument(
@@ -110,10 +112,11 @@ def main():
     parser.add_argument(
         "--preserve", "-p", help="preserve previous output files", type=str2bool,default=True
     )
-    parser.add_argument("--resume","-r",type = str2bool, default = True, help="Resumpe - if present - from previous incomplete.csv")
+    parser.add_argument("--resume","-r",help="Resume - if present - from previous incomplete.csv",action='store_true')
     parser.add_argument("--expert","-e",type = str, default = "??", help="Expert Initials")
     parser.add_argument("--nextActionItem","-n",help="Stop and Print Next Action Item",action='store_true')
     parser.add_argument("--verbose","-v",help="Verbose",action='store_true')
+    parser.add_argument("--buildScriptPath",help="Location of build-scripts")
     # parser.add_argument('--feature', default=True, action=argparse.BooleanOptionalAction)
 
     # parser.add_argument('--feature', dest='feature', action='store_true')
@@ -124,19 +127,32 @@ def main():
     
 
     if args.verbose:
-        print("resume = ",args.resume)
+        print("\t* Resume = ",args.resume)
 
-    SCRIPT_PATH=BASE_PATH+"/scripts/"+ args.expert
+    if (args.buildScriptPath):
+        print("\t* Using %s build-scripts"%(args.buildScriptPath))
+        SCRIPT_PATH=args.buildScriptPath
+    else:
+        SCRIPT_PATH=BASE_PATH+"/scripts/"+ args.expert
+    if (args.basePath):
+        print("\t* Base_path for download and builer is :",args.basePath)
+        BASE_PATH=args.basePath
     if (args.verbose):
-        print("Script path is :",SCRIPT_PATH)
+        print("\t* Build script path is :",SCRIPT_PATH)
+    
+    if (args.repoPath):
+        print("\t* Replacing build-in repo path %s with %s"%(REPO_PATH,args.repoPath+"/"))
+        REPO_PATH=args.repoPath+"/"
 
     global expertInitials
     expertInitials= args.expert
     # In the case that we resume, the csvSource is a previous result or intermediate file
     if args.resume and os.path.isfile(args.csvSource):
+        #if args.resume and os.path.isfile(args.intermediateResultsFile):
         print("Continuing / Updating results ",args.intermediateResultsFile)
         df_full = pd.read_csv(args.csvSource, index_col=0)
     else:
+        print("Starting new build process from CSV file",args.csvSource);
         # not resuming, use given csv file
         df_full = pd.read_csv(args.csvSource, index_col=0)
     #    try:
@@ -176,11 +192,14 @@ def main():
             df = df.progress_apply(intercept_exceptions, axis=1)
             #df = df.apply(intercept_exceptions, axis=1)
         except Exception as e:
-            print("Failed with ",e)
+            print("Failed with ",repr(e))
             # if preserve is set, secure previous intermediate Results            
             if args.preserve and os.path.isfile(args.intermediateResultsFile):
                 archive_prev_file(args.intermediateResultsFile)
             df.to_csv(args.intermediateResultsFile)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
             return
     
         if skip:
@@ -215,7 +234,7 @@ def one_repo_at_a_time(row):
     path = REPO_PATH + row["Code"].replace('/', '--')
     print("### Processing ",row["Code"].replace('/', '--')," ###")
     if pd.isna(row['usedHash']):
-        print ("Missing hash, forcing test of script")
+        print ("Missing hash, testing scripts")
 
     try:
         # if there is a hash AND
@@ -260,16 +279,17 @@ def one_repo_at_a_time(row):
     except KeyError:
         print ("KeyError: build_script or note unknown")
 
-    print ("\t* Dowloading ",row["Code"]," to ",row["Code"].replace('/', '--'))
+    print ("\t* Downloading ",row["Code"]," to ",REPO_PATH+row["Code"].replace('/', '--'))
     try:
         row['usedHash'] = apply_dowload_repo(row)
     except RepoUnavailable as e:
         print("Repository ",row["Code"]," was deleted, HTTPS code was ",e.getCode())
         return 
         pass
-    except:
+    except Exception as e:
+        print(e)
         raise
-
+    print("\t* Download completed")
     if not (pd.isna(row['build_script']) ):
         print("Updated hash, testing existing build script :",row['build_script'])
         # there is a custom build script and it is not a FAIL script, test it:
@@ -280,7 +300,7 @@ def one_repo_at_a_time(row):
             row['build_script']="userscript_fail_after_fixing_githash.sh"
         shutil.rmtree(path)
         return row
-
+    print("\t* checking for existing script file")
     script_file=SCRIPT_PATH+"/"+row["Code"].replace('/', '--')+".sh"
     if os.path.isfile(script_file):
         if try_build_script(path,script_file):
@@ -295,10 +315,12 @@ def one_repo_at_a_time(row):
         row['build_script']=script_file
         shutil.rmtree(path)
         return row
+    print("\t* Testing Makefile")
  #   print("Downloaded repo with hash",row['usedHash'])
 #    print ("##### Attempting compile for ",row["Code"].replace('/', '--'),"###########")
     if "Makefile" in os.listdir(path) or "makefile" in os.listdir(path):
-        #print("Makfile in ",path)
+        print("\t\tMakfile in ",path)
+        print("\t\tMakefile execution templated:",BASE_PATH,"/scripts/default_make.sh")
         if try_build_script(path, BASE_PATH + "/scripts/default_make.sh"):
             row['build_script'] = "default_make.sh"
             row['use_configure'] = False
@@ -311,6 +333,7 @@ def one_repo_at_a_time(row):
             print("\t* Makefile failed") 
     else:
         print("\t* Makefile not available")
+    print("\t* Testing CMake")
     if "CMakeLists.txt" in os.listdir(path):
         #print("cmake in ",path)
         if try_build_script(path, BASE_PATH+"/scripts/default_cmake.sh"):
@@ -348,7 +371,9 @@ def one_repo_at_a_time(row):
 
 
 def try_build_script(path, script):
+    print("Checking file ",os.path.isfile(script))
     assert os.path.isfile(script)
+    print("Done")
     try:
         output = subprocess.check_output("%s %s -O0"%(script,path), cwd=path,
                                          stderr=subprocess.STDOUT,

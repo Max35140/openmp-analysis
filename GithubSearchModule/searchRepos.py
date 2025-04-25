@@ -25,7 +25,8 @@ def main():
     
         c.reportRepos().to_csv(args.found_file)
         print('Found repositories written to: ' + args.found_file)
-
+    print("Stopping after search, next step: DownloadAndBuilder module")
+    return 
     dataDir = args.data_dir
     if not os.path.isdir(dataDir):
         os.mkdir(dataDir)
