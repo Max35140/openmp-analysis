@@ -1,5 +1,4 @@
 #!/bin/bash
-
 mkdir -p $1/build
 cd $1/build
 
