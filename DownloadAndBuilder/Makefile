@@ -4,7 +4,7 @@ all:
 	python ./other_scripts/download_repos.py ci_result.csv --basePath='.' --repoPath='./data'  --csvOutput=ci_result.mk2.csv --expert=CI --intermediateResultsFile $(INTERMEDIATE_RESULTS)
 
 start:
-	python ./other_scripts/download_repos.py ci.csv --basePath='.' --repoPath='./data'  --csvOutput=$(RESULT_FILE) --expert=CI --intermediateResultsFile $(INTERMEDIATE_RESULTS) --resume=false
+	python ./other_scripts/download_repos.py ci.csv --basePath='.' --repoPath='./data'  --csvOutput=$(RESULT_FILE) --expert=CI --intermediateResultsFile $(INTERMEDIATE_RESULTS)
 
 continue:
 	@if [[ -e $(INTERMEDIATE_RESULTS) ]] ; then \
