@@ -31,7 +31,7 @@ class RepoUnavailable(Exception):
         return self.errorCode
 
 # REPO_PATH = "/home/tim/repo_finder/openmp-usage-analysis-binaries/REPOS/"
-BASE_PATH= r"/home/max/Downloads/openmp-analysis/DownloadAndBuilder"
+BASE_PATH= r"/home/max/Downloads/openmp-analysis2/DownloadAndBuilder"
 REPO_PATH   = BASE_PATH+"/data/"
 SCRIPT_PATH = BASE_PATH+"/scripts/CI"
 def cloneRepo(repoUrl, path, commit_hash=None):
@@ -71,7 +71,7 @@ def apply_dowload_repo(row):
     h = None
     if pd.notna(row['usedHash']):
         h = row['usedHash']
-    return cloneRepo(row["URL"], REPO_PATH+"/" + row["Code"].replace('/', '--'), h)
+    return cloneRepo(row["URL"], REPO_PATH + row["Code"].replace('/', '--'), h)
 
 def archive_prev_file(filename):
     if os.path.isfile(filename+".back"):
@@ -124,8 +124,6 @@ def main():
     # parser.add_argument('--no-feature', dest='feature', action='store_false')
     # parser.set_defaults(feature=True)
     args = parser.parse_args()
-    
-    
 
     if args.verbose:
         print("\t* Resume = ",args.resume)
@@ -143,7 +141,7 @@ def main():
     
     if (args.repoPath):
         print("\t* Replacing build-in repo path %s with %s"%(REPO_PATH,args.repoPath+"/"))
-        REPO_PATH=args.repoPath+"/"
+        REPO_PATH=args.repoPath + '/'
 
     global expertInitials
     expertInitials= args.expert
@@ -153,7 +151,7 @@ def main():
         print("Continuing / Updating results ",args.intermediateResultsFile)
         df_full = pd.read_csv(args.csvSource, index_col=0)
     else:
-        print("Starting new build process from CSV file",args.csvSource);
+        print("Starting new build process from CSV file",args.csvSource)
         # not resuming, use given csv file
         df_full = pd.read_csv(args.csvSource, index_col=0)
     #    try:
@@ -177,9 +175,6 @@ def main():
     # df = df_full.iloc[0:2]
     df = df_full
     df.dropna(subset=['Code'],inplace=True)
- 
-
-
     if args.nextActionItem:
         print("Searching for next action item")
         for index, row in df.iterrows():
@@ -187,7 +182,7 @@ def main():
             if (pd.isna(row['build_script']) or "autofail.sh" in row['build_script']) and not (os.path.isfile(SCRIPT_PATH+"/"+row["Code"].replace('/', '--')+".sh") or os.path.isfile(SCRIPT_PATH+"/"+row["Code"].replace('/', '--')+".fail.sh")):
                 print ("Next action item in row ", index,": ",row["Code"].replace('/', '--'),"\t Status:",row['build_script'])
                 return
-    else:  
+    else:
         try:
             #df = df.progress_apply(one_repo_at_a_time, axis=1)
             df = df.progress_apply(intercept_exceptions, axis=1)
@@ -240,7 +235,7 @@ def find_all(path,name):
 
 def one_repo_at_a_time(row):
     global expertInitials
-    row['expert'] = expertInitials 
+    row['expert'] = expertInitials
     path = REPO_PATH + row["Code"].replace('/', '--')
     print("### Processing ",row["Code"].replace('/', '--')," ###")
     code_name=row["Code"].replace('/', '--')
@@ -253,7 +248,7 @@ def one_repo_at_a_time(row):
         if not (pd.isna(row['usedHash'])) and (not (pd.isna(row['build_script']) ) or os.path.isfile(SCRIPT_PATH+"/"+row["Code"].replace('/', '--')+".sh") or os.path.isfile(SCRIPT_PATH+"/"+row["Code"].replace('/', '--')+".fail.sh")):
             if row['build_script'] == "autofail.sh":
                 customScriptFile= SCRIPT_PATH+"/"+row["Code"].replace('/', '--')+".sh"
-#                print("Checking file "+customScriptFile)
+                #print("Checking file "+customScriptFile)
                 # if this is an autofail, and there is a custom file for that code, replace the autofail with the custom file
                 if os.path.isfile(customScriptFile):
                     print(" -> Build script replaced with detected script file:"+"CI/"+row["Code"].replace('/', '--')+".sh")
@@ -343,9 +338,8 @@ def one_repo_at_a_time(row):
                 shutil.rmtree(path)
                 return row
             else:
-                print("\t\t %s did not work..."%(possible_script))    
+                print("\t\t %s did not work..."%(possible_script))
 
-    
     print("\t* Testing Makefile")
  #   print("Downloaded repo with hash",row['usedHash'])
 #    print ("##### Attempting compile for ",row["Code"].replace('/', '--'),"###########")
