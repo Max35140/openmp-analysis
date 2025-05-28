@@ -311,7 +311,8 @@ def one_repo_at_a_time(row):
     if os.path.isfile(script_file):
         if try_build_script(path,script_file):
             print("Added hash and build works")
-            row['build_script']=script_file
+            print(script_file)
+            row['build_script']=SCRIPT_PATH.split("/scripts/", 1)[-1] + "/" + row["Code"].replace("/", "--") + ".sh"
         else:
             row['build_script']="userscript_fail_after_fixing_githash.sh"
         shutil.rmtree(path)

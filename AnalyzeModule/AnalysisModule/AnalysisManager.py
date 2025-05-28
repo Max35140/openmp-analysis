@@ -124,10 +124,11 @@ def analyze_asm_repo(row, print_analyzed_repos=True, print_analyzed_files=False)
                     analyze = False
             if analyze:
                 print("Analyze file: %s" % name)
-                ##analyzer = AsmAnalyzer()
-                analyzer = TaskAnalyzer()
+                analyzer = AsmAnalyzer()
+                taskAnalyzer = TaskAnalyzer()
                 outname = name.rsplit(sep=".",maxsplit=1)[0] + ".csv"
                 analyzer(this_file, os.path.join(outdir, outname), row["tripcount_guess"])
+                taskAnalyzer(this_file, os.path.join(outdir, outname), row["tripcount_guess"])
             else:
                 if print_analyzed_files:
                     print("skip file %s" % this_file)

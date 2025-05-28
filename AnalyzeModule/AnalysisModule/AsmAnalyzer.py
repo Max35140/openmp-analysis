@@ -227,7 +227,7 @@ class AsmAnalyzer:
         pass
 
     # perform the analyses
-    def __call__(self, source, outfile, default_trip_count_guess, print_cfg):
+    def __call__(self, source, outfile, default_trip_count_guess, print_cfg=False):
         proj = angr.Project(source, load_options={'auto_load_libs': False})
 
         if print_cfg:
